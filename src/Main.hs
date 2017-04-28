@@ -3,17 +3,19 @@ module Main where
 import System.Environment
 import qualified Data.ByteString.Lazy as LBS
 import Data.Binary.Get
-import Data.Coerce
 import Data.Word
 import Control.Monad
+import qualified Codec.Compression.Zlib as Zlib
+import qualified Codec.Compression.Lzma as Lzma
 
 data CompressMethod = Zlib | Lzma
+  deriving Show
 
 data Header = Header
   { compressMethod :: Maybe CompressMethod
   , version :: Int
   , contentLength :: Int
-  }
+  } deriving Show
 
 w2c :: Word8 -> Char
 w2c = toEnum . fromEnum
@@ -35,8 +37,21 @@ getHeader = do
     l <- getWord32le
     pure (Header cm (fromIntegral v) (fromIntegral l))
 
+getAll :: Get (Header, LBS.ByteString)
+getAll = do
+    hd <- getHeader
+    remained <- getRemainingLazyByteString
+    let decompress = case compressMethod hd of
+            Nothing -> id
+            Just Zlib -> Zlib.decompress
+            Just Lzma -> Lzma.decompress
+    let decoded = decompress remained
+    pure (hd,decoded)
+
 main :: IO ()
 main = do
     [fp] <- getArgs
     raw <- LBS.readFile fp
+    let (hd,result) = runGet getAll raw
+    print (hd, LBS.length result+8)
     pure ()
