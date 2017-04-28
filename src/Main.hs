@@ -1,3 +1,4 @@
+{-# LANGUAGE DuplicateRecordFields #-}
 module Main where
 
 import System.Environment
@@ -16,6 +17,12 @@ data Header = Header
   , version :: Int
   , contentLength :: Int
   } deriving Show
+
+data RawTag = RawTag
+  { code :: Word16
+  , contentLength :: Int
+  , rawData :: LBS.ByteString
+  }
 
 w2c :: Word8 -> Char
 w2c = toEnum . fromEnum
@@ -40,6 +47,7 @@ getHeader = do
 getAll :: Get (Header, LBS.ByteString)
 getAll = do
     hd <- getHeader
+    -- TODO: increase laziness
     remained <- getRemainingLazyByteString
     let decompress = case compressMethod hd of
             Nothing -> id
