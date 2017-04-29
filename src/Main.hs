@@ -20,6 +20,9 @@ data Header = Header
   { compressMethod :: Maybe CompressMethod
   , version :: Int
   , contentLength :: Int
+  , frameSize :: Rect
+  , frameRate :: Int
+  , frameCount :: Int
   } deriving Show
 
 data RawTag = RawTag
@@ -40,8 +43,8 @@ w2c = toEnum . fromEnum
 getChar8 :: Get Char
 getChar8 = w2c <$> getWord8
 
-getHeader :: Get Header
-getHeader = do
+getHeader1 :: Get (Maybe CompressMethod, (Int, Int))
+getHeader1 = do
     c <- getChar8
     cm <- case c of
         'F' -> pure Nothing
@@ -52,14 +55,14 @@ getHeader = do
     guard $ magic == ('W','S')
     v <- getWord8
     l <- getWord32le
-    pure (Header cm (fromIntegral v) (fromIntegral l))
+    pure (cm, (fromIntegral v, fromIntegral l))
 
-getAll :: Get (Header, LBS.ByteString)
+getAll :: Get ((Maybe CompressMethod, (Int, Int)), LBS.ByteString)
 getAll = do
-    hd <- getHeader
+    hd@(cm,_) <- getHeader1
     -- TODO: increase laziness
     remained <- getRemainingLazyByteString
-    let decompress = case compressMethod hd of
+    let decompress = case cm of
             Nothing -> id
             Just Zlib -> Zlib.decompress
             Just Lzma -> Lzma.decompress
@@ -125,14 +128,20 @@ getRect = do
         packBits = foldl' (\acc i -> acc*2 + if i then 1 else 0) 0
     pure (Rect nbits (xMin,xMax) (yMin,yMax))
 
-passBoring :: Get ()
-passBoring = do
-    r <- getRect
+getHeader2 :: Get (Rect, (Int, Int))
+getHeader2 = do
+    rt <- getRect
     -- frame rate
-    _ <- traceShow r getWord16le
+    fr <- fromIntegral <$> getWord16le
     -- frame count
-    _ <- getWord16le
-    pure ()
+    fc <- fromIntegral <$> getWord16le
+    pure (rt,(fr,fc))
+
+getHeader :: LBS.ByteString -> (Header, LBS.ByteString)
+getHeader raw = (Header cm v l rt fr fc, remained)
+  where
+    ((cm,(v,l)),decoded) = runGet getAll raw
+    Right (remained, _, (rt,(fr,fc))) = runGetOrFail getHeader2 decoded
 
 explainCode :: Word16 -> String
 explainCode c = show c ++ "\t" ++ explain
@@ -156,9 +165,13 @@ main :: IO ()
 main = do
     [fp] <- getArgs
     raw <- LBS.readFile fp
-    let (hd,result) = runGet getAll raw
-    print (hd, LBS.length result+8)
-    let ts = runGet (passBoring >> getRawTags) result
+    let (hd,result) = getHeader raw
+    -- TODO: fix frame rate
+    print hd
+    -- let (hd,result) = runGet getAll raw
+    -- TODO: bring back length verification
+    -- print (hd, LBS.length result+8)
+    let ts = runGet getRawTags result
     print (length ts)
     mapM_ (putStrLn . explainCode . code) ts
     pure ()
