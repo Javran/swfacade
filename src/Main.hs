@@ -9,6 +9,9 @@ import Control.Monad
 import qualified Codec.Compression.Zlib as Zlib
 import qualified Codec.Compression.Lzma as Lzma
 import Data.Bits
+import Data.List.Split
+import Data.Foldable
+import Debug.Trace
 
 data CompressMethod = Zlib | Lzma
   deriving Show
@@ -24,6 +27,12 @@ data RawTag = RawTag
   , contentLength :: Int
   , rawData :: LBS.ByteString
   }
+
+data Rect = Rect
+  { nbits :: Int
+  , xRange :: (Int, Int)
+  , yRange :: (Int, Int)
+  } deriving (Show)
 
 w2c :: Word8 -> Char
 w2c = toEnum . fromEnum
@@ -91,20 +100,36 @@ getRawTags = do
         ts <- getRawTags
         pure (t:ts)
 
-passRect :: Get ()
-passRect = do
+getRect :: Get Rect
+getRect = do
     nbitsRaw <- getWord8
-    let nbits = shiftR nbitsRaw 3 .&. 0x1F
+    let nbits :: Int
+        nbits = fromIntegral (shiftR nbitsRaw 3 .&. 0x1F :: Word8)
+        upper3 = nbitsRaw .&. 3
         neededBits = nbits*4 - 3
         neededBytes = ceiling (fromIntegral neededBits / 8 :: Double) :: Int
-    _ <- getLazyByteString (fromIntegral neededBytes)
-    pure ()
+    lowersRaw <- replicateM neededBytes getWord8
+    -- now that "upper3 ++ lowers" has all bits we need with some padding 0s in the end
+    let uppers :: [Bool] -- 3 upper bits
+        uppers = testBit upper3 <$> [2,1,0]
+        unpackBits :: Word8 -> [Bool]
+        unpackBits x = testBit x <$> [7,6..0]
+        lowers = concatMap unpackBits lowersRaw
+        -- TODO: checking all remaining bits are False
+        [xMin,xMax,yMin,yMax] =
+            map packBits
+            . take 4
+            . chunksOf nbits
+            $ uppers ++ lowers
+        packBits :: [Bool] -> Int
+        packBits = foldl' (\acc i -> acc*2 + if i then 1 else 0) 0
+    pure (Rect nbits (xMin,xMax) (yMin,yMax))
 
 passBoring :: Get ()
 passBoring = do
-    passRect
+    r <- getRect
     -- frame rate
-    _ <- getWord16le
+    _ <- traceShow r getWord16le
     -- frame count
     _ <- getWord16le
     pure ()
