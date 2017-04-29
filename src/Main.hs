@@ -21,7 +21,7 @@ data Header = Header
   , version :: Int
   , contentLength :: Int
   , frameSize :: Rect
-  , frameRate :: Int
+  , frameRate :: Double
   , frameCount :: Int
   } deriving Show
 
@@ -128,11 +128,14 @@ getRect = do
         packBits = foldl' (\acc i -> acc*2 + if i then 1 else 0) 0
     pure (Rect nbits (xMin,xMax) (yMin,yMax))
 
-getHeader2 :: Get (Rect, (Int, Int))
+getHeader2 :: Get (Rect, (Double, Int))
 getHeader2 = do
     rt <- getRect
     -- frame rate
-    fr <- fromIntegral <$> getWord16le
+    frAfter <- fromIntegral <$> getWord8 :: Get Int
+    frBefore <- fromIntegral <$> getWord8 :: Get Int
+    let fr :: Double
+        fr = fromIntegral frBefore + fromIntegral frAfter / 0x10000
     -- frame count
     fc <- fromIntegral <$> getWord16le
     pure (rt,(fr,fc))
@@ -166,7 +169,6 @@ main = do
     [fp] <- getArgs
     raw <- LBS.readFile fp
     let (hd,result) = getHeader raw
-    -- TODO: fix frame rate
     print hd
     -- let (hd,result) = runGet getAll raw
     -- TODO: bring back length verification
