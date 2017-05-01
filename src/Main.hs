@@ -11,7 +11,6 @@ import qualified Codec.Compression.Lzma as Lzma
 import Data.Bits
 import Data.List.Split
 import Data.Foldable
-import Debug.Trace
 
 data CompressMethod = Zlib | Lzma
   deriving Show
@@ -105,11 +104,17 @@ getRawTags = do
 
 getRect :: Get Rect
 getRect = do
+    -- for this first byte,
+    -- first 5 bits of it indicate the bit length
+    -- while the following 3 bits is part of the rectangle
     nbitsRaw <- getWord8
-    let nbits :: Int
-        nbits = fromIntegral (shiftR nbitsRaw 3 .&. 0x1F :: Word8)
+    let -- cut 3 lower bits
+        nbs :: Int
+        nbs = fromIntegral (shiftR nbitsRaw 3 .&. 0x1F :: Word8)
+        -- the term is a bit confusing: "upper3" refers to the first 3 bits
+        -- of the data payload, which is left over from "nbitsRaw"
         upper3 = nbitsRaw .&. 3
-        neededBits = nbits*4 - 3
+        neededBits = nbs*4 - 3
         neededBytes = ceiling (fromIntegral neededBits / 8 :: Double) :: Int
     lowersRaw <- replicateM neededBytes getWord8
     -- now that "upper3 ++ lowers" has all bits we need with some padding 0s in the end
@@ -122,11 +127,11 @@ getRect = do
         [xMin,xMax,yMin,yMax] =
             map packBits
             . take 4
-            . chunksOf nbits
+            . chunksOf nbs
             $ uppers ++ lowers
         packBits :: [Bool] -> Int
         packBits = foldl' (\acc i -> acc*2 + if i then 1 else 0) 0
-    pure (Rect nbits (xMin,xMax) (yMin,yMax))
+    pure (Rect nbs (xMin,xMax) (yMin,yMax))
 
 getHeader2 :: Get (Rect, (Double, Int))
 getHeader2 = do
