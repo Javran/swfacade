@@ -24,6 +24,12 @@ data Header = Header
   , frameCount :: Int
   } deriving Show
 
+data CommonHeader = CommonHeader
+  { compressMethod :: Maybe CompressMethod
+  , version :: Int
+  , contentLength :: Int
+  } deriving Show
+
 data RawTag = RawTag
   { code :: Word16
   , contentLength :: Int
@@ -112,7 +118,30 @@ getRect = do
 getHeader :: LBS.ByteString -> (Header, LBS.ByteString)
 getHeader raw = (Header cm v l rt fr fc, remained)
   where
-    ((cm,(v,l)),decoded) = runGet getAll raw
+    -- get common header section, which appears
+    -- in the very beginning of every swf file
+    getCommonHeader :: Get CommonHeader
+    getCommonHeader = do
+        c <- getChar8
+        -- first byte indicates the compress method
+        cm <- case c of
+            'F' -> pure Nothing
+            'C' -> pure (Just Zlib)
+            'Z' -> pure (Just Lzma)
+            _ -> fail "unrecognized compression method"
+        -- followed by two magic bits
+        magic <- (,) <$> getChar8 <*> getChar8
+        guard $ magic == ('W','S')
+        -- version number
+        v <- getWord8
+        -- file length
+        l <- getWord32le
+        pure (CommonHeader cm (fromIntegral v) (fromIntegral l))
+
+    (CommonHeader
+      { compressMethod = cm
+      , version = v
+      , contentLength = l},decoded) = runGet getAll raw
     Right (remained, _, (rt,(fr,fc))) = runGetOrFail getHeader2 decoded
 
     getHeader2 :: Get (Rect, (Double, Int))
@@ -127,9 +156,9 @@ getHeader raw = (Header cm v l rt fr fc, remained)
         fc <- fromIntegral <$> getWord16le
         pure (rt,(fr,fc))
 
-    getAll :: Get ((Maybe CompressMethod, (Int, Int)), LBS.ByteString)
+    getAll :: Get (CommonHeader, LBS.ByteString)
     getAll = do
-        hd@(cm,_) <- getHeader1
+        hd@CommonHeader { compressMethod = cm } <- getCommonHeader
         -- TODO: increase laziness
         remained <- getRemainingLazyByteString
         let decompress = case cm of
@@ -140,20 +169,6 @@ getHeader raw = (Header cm v l rt fr fc, remained)
                     Lzma.decompress
         let decoded = decompress remained
         pure (hd,decoded)
-      where
-        getHeader1 :: Get (Maybe CompressMethod, (Int, Int))
-        getHeader1 = do
-            c <- getChar8
-            cm <- case c of
-                'F' -> pure Nothing
-                'C' -> pure (Just Zlib)
-                'Z' -> pure (Just Lzma)
-                _ -> fail "unrecognized compression method"
-            magic <- (,) <$> getChar8 <*> getChar8
-            guard $ magic == ('W','S')
-            v <- getWord8
-            l <- getWord32le
-            pure (cm, (fromIntegral v, fromIntegral l))
 
 explainCode :: Word16 -> String
 explainCode c = show c ++ "\t" ++ explain
