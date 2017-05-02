@@ -1,5 +1,10 @@
 {-# LANGUAGE DuplicateRecordFields, PartialTypeSignatures #-}
-module Data.Swfacade.Header where
+{-# OPTIONS_GHC -fno-warn-partial-type-signatures #-}
+module Data.Swfacade.Header
+  ( Rect(..)
+  , Header(..)
+  , getHeader
+  ) where
 
 import qualified Data.ByteString.Lazy as LBS
 import Data.Binary.Get
@@ -40,8 +45,6 @@ w2c = toEnum . fromEnum
 
 getChar8 :: Get Char
 getChar8 = w2c <$> getWord8
-
-
 
 getRect :: Get Rect
 getRect = do
