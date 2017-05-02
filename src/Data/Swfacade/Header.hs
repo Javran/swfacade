@@ -1,4 +1,4 @@
-{-# LANGUAGE DuplicateRecordFields, PartialTypeSignatures #-}
+{-# LANGUAGE DuplicateRecordFields, ScopedTypeVariables, PartialTypeSignatures, TypeFamilies #-}
 {-# OPTIONS_GHC -fno-warn-partial-type-signatures #-}
 module Data.Swfacade.Header
   ( Rect(..)
@@ -15,6 +15,10 @@ import qualified Codec.Compression.Lzma as Lzma
 import Data.Bits
 import Data.List.Split
 import Data.Foldable
+import Control.Monad.Except
+import Control.Arrow
+import Data.Coerce
+import Data.Functor.Identity
 
 data CompressMethod = Zlib | Lzma
   deriving Show
@@ -40,11 +44,25 @@ data CommonHeader = CommonHeader
   , contentLength :: Int
   } deriving Show
 
+data ParseError
+  = ErrCommonHeader (LBS.ByteString, ByteOffset, String)
+  | ErrHeader2 (LBS.ByteString, ByteOffset, String)
+  | ErrOther String
+    deriving Show
+
+type SwfParse = Except ParseError
+
 w2c :: Word8 -> Char
 w2c = toEnum . fromEnum
 
 getChar8 :: Get Char
 getChar8 = w2c <$> getWord8
+
+runGetOrFail' ::
+       ((LBS.ByteString, ByteOffset, String) -> ParseError)
+    -> Get a -> LBS.ByteString
+    -> SwfParse (LBS.ByteString, ByteOffset, a)
+runGetOrFail' wrapError get = coerce . left wrapError . runGetOrFail get
 
 getRect :: Get Rect
 getRect = do
@@ -98,28 +116,27 @@ getCommonHeader = do
     pure (CommonHeader cm (fromIntegral v) (fromIntegral l))
 
 -- consume common header part, get rest of the data (lazily) decompressed
-consumeCommonHeader :: LBS.ByteString -> Either _ (CommonHeader, LBS.ByteString)
-consumeCommonHeader raw = case runGetOrFail getCommonHeader raw of
-    Left errs -> Left errs
-    Right (remained, _, ch) ->
-        let cm = compressMethod (ch :: CommonHeader)
-            decompress = case cm of
-                Nothing -> id
-                Just Zlib -> Zlib.decompress
-                Just Lzma ->
-                    {- TODO: this is not working, need to adjust the data somehow -}
-                    Lzma.decompress
-        in Right (ch, decompress remained)
+consumeCommonHeader :: LBS.ByteString -> SwfParse (CommonHeader, LBS.ByteString)
+consumeCommonHeader raw = do
+    (remained, _ :: ByteOffset, ch) <- runGetOrFail' ErrCommonHeader getCommonHeader raw
+    let cm = compressMethod (ch :: CommonHeader)
+        decompress = case cm of
+            Nothing -> id
+            Just Zlib -> Zlib.decompress
+            Just Lzma ->
+                {- TODO: this is not working, need to adjust the data somehow -}
+                Lzma.decompress
+    pure (ch, decompress remained)
 
-getHeader :: LBS.ByteString -> (Header, LBS.ByteString)
-getHeader raw = (Header cm v l rt fr fc, remained)
-  where
-    Right (CommonHeader
+getHeader :: LBS.ByteString -> SwfParse (Header, LBS.ByteString)
+getHeader raw = do --pure (Header cm v l rt fr fc, remained)
+    (CommonHeader
       { compressMethod = cm
       , version = v
-      , contentLength = l},decoded) = consumeCommonHeader raw
-    Right (remained, _, (rt,(fr,fc))) = runGetOrFail getHeader2 decoded
-
+      , contentLength = l},decoded) <- consumeCommonHeader raw
+    (remained, _, (rt,(fr,fc))) <- runGetOrFail' ErrHeader2 getHeader2 decoded
+    pure (Header cm v l rt fr fc, remained)
+  where
     getHeader2 :: Get (Rect, (Double, Int))
     getHeader2 = do
         rt <- getRect

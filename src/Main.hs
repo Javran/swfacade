@@ -6,6 +6,7 @@ import qualified Data.ByteString.Lazy as LBS
 import Data.Binary.Get
 import Data.Word
 import Data.Bits
+import Control.Monad.Except
 
 import Data.Swfacade.Header
 
@@ -72,7 +73,7 @@ main :: IO ()
 main = do
     [fp] <- getArgs
     raw <- LBS.readFile fp
-    let (hd,result) = getHeader raw
+    let Right (hd,result) = runExcept (getHeader raw)
     print hd
     -- let (hd,result) = runGet getAll raw
     -- TODO: bring back length verification

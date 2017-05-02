@@ -20,6 +20,7 @@ executable swfacade
   other-modules:       Data.Swfacade.Header
   build-depends:       base
                      , bytestring
+                     , mtl
                      , zlib
                      , lzma
                      , binary
