@@ -17,6 +17,7 @@ executable swfacade
   hs-source-dirs:      src
   main-is:             Main.hs
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
+  other-modules:       Data.Swfacade.Header
   build-depends:       base
                      , bytestring
                      , zlib
