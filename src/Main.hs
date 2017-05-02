@@ -1,4 +1,4 @@
-{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE DuplicateRecordFields, PartialTypeSignatures #-}
 module Main where
 
 import System.Environment
@@ -114,34 +114,47 @@ getRect = do
         packBits = foldl' (\acc i -> acc*2 + if i then 1 else 0) 0
     pure (Rect nbs (xMin,xMax) (yMin,yMax))
 
+-- get common header section, which appears
+-- in the very beginning of every swf file
+getCommonHeader :: Get CommonHeader
+getCommonHeader = do
+    c <- getChar8
+    -- first byte indicates the compress method
+    cm <- case c of
+        'F' -> pure Nothing
+        'C' -> pure (Just Zlib)
+        'Z' -> pure (Just Lzma)
+        _ -> fail "unrecognized compression method"
+    -- followed by two magic bits
+    magic <- (,) <$> getChar8 <*> getChar8
+    guard $ magic == ('W','S')
+    -- version number
+    v <- getWord8
+    -- file length
+    l <- getWord32le
+    pure (CommonHeader cm (fromIntegral v) (fromIntegral l))
+
+-- consume common header part, get rest of the data (lazily) decompressed
+consumeCommonHeader :: LBS.ByteString -> Either _ (CommonHeader, LBS.ByteString)
+consumeCommonHeader raw = case runGetOrFail getCommonHeader raw of
+    Left errs -> Left errs
+    Right (remained, _, ch) ->
+        let cm = compressMethod (ch :: CommonHeader)
+            decompress = case cm of
+                Nothing -> id
+                Just Zlib -> Zlib.decompress
+                Just Lzma ->
+                    {- TODO: this is not working, need to adjust the data somehow -}
+                    Lzma.decompress
+        in Right (ch, decompress remained)
 
 getHeader :: LBS.ByteString -> (Header, LBS.ByteString)
 getHeader raw = (Header cm v l rt fr fc, remained)
   where
-    -- get common header section, which appears
-    -- in the very beginning of every swf file
-    getCommonHeader :: Get CommonHeader
-    getCommonHeader = do
-        c <- getChar8
-        -- first byte indicates the compress method
-        cm <- case c of
-            'F' -> pure Nothing
-            'C' -> pure (Just Zlib)
-            'Z' -> pure (Just Lzma)
-            _ -> fail "unrecognized compression method"
-        -- followed by two magic bits
-        magic <- (,) <$> getChar8 <*> getChar8
-        guard $ magic == ('W','S')
-        -- version number
-        v <- getWord8
-        -- file length
-        l <- getWord32le
-        pure (CommonHeader cm (fromIntegral v) (fromIntegral l))
-
-    (CommonHeader
+    Right (CommonHeader
       { compressMethod = cm
       , version = v
-      , contentLength = l},decoded) = runGet getAll raw
+      , contentLength = l},decoded) = consumeCommonHeader raw
     Right (remained, _, (rt,(fr,fc))) = runGetOrFail getHeader2 decoded
 
     getHeader2 :: Get (Rect, (Double, Int))
@@ -155,20 +168,6 @@ getHeader raw = (Header cm v l rt fr fc, remained)
         -- frame count
         fc <- fromIntegral <$> getWord16le
         pure (rt,(fr,fc))
-
-    getAll :: Get (CommonHeader, LBS.ByteString)
-    getAll = do
-        hd@CommonHeader { compressMethod = cm } <- getCommonHeader
-        -- TODO: increase laziness
-        remained <- getRemainingLazyByteString
-        let decompress = case cm of
-                Nothing -> id
-                Just Zlib -> Zlib.decompress
-                Just Lzma ->
-                    {- TODO: this is not working, need to adjust the data somehow -}
-                    Lzma.decompress
-        let decoded = decompress remained
-        pure (hd,decoded)
 
 explainCode :: Word16 -> String
 explainCode c = show c ++ "\t" ++ explain
