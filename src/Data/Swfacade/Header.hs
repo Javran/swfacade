@@ -37,7 +37,7 @@ data Rect = Rect
 data Header = Header
   { compressMethod :: Maybe CompressMethod
   , version :: Int
-  , contentLength :: Int
+  , fileLength :: Int
   , frameSize :: Rect
   , frameRate :: Double
   , frameCount :: Int
@@ -46,7 +46,7 @@ data Header = Header
 data CommonHeader = CommonHeader
   { compressMethod :: Maybe CompressMethod
   , version :: Int
-  , contentLength :: Int
+  , fileLength :: Int
   } deriving Show
 
 type BinaryParseError = (LBS.ByteString, ByteOffset, String)
@@ -75,12 +75,12 @@ runGetOrFail' ::
     -> SwfParse (LBS.ByteString, ByteOffset, a)
 runGetOrFail' wrapError get = coerce . left wrapError . runGetOrFail get
 
-getRect :: Get Rect
+getRect :: Get (Rect,Int)
 getRect = do
     -- for this first byte,
     -- first 5 bits of it indicate the bit length
     -- while the following 3 bits is part of the rectangle
-    nbitsRaw <- getWord8
+    nbitsRaw <- getWord8 -- first byte
     let -- cut 3 lower bits
         nbs :: Int
         nbs = fromIntegral (shiftR nbitsRaw 3 .&. 0x1F :: Word8)
@@ -104,7 +104,7 @@ getRect = do
             $ uppers ++ lowers
         packBits :: [Bool] -> Int
         packBits = foldl' (\acc i -> acc*2 + if i then 1 else 0) 0
-    pure (Rect nbs (xMin,xMax) (yMin,yMax))
+    pure (Rect nbs (xMin,xMax) (yMin,yMax), neededBytes+1)
 
 -- get common header section, which appears
 -- in the very beginning of every swf file
@@ -141,17 +141,17 @@ consumeCommonHeader raw = do
     pure (ch, decompress remained)
 
 -- fully parse header of a SWF file, return a lazy ByteString of unconsumed part
-getHeader :: LBS.ByteString -> SwfParse (Header, LBS.ByteString)
+getHeader :: LBS.ByteString -> SwfParse ((Header, Int), LBS.ByteString)
 getHeader raw = do
     (CommonHeader
       { compressMethod = cm
       , version = v
-      , contentLength = l},decoded) <- consumeCommonHeader raw
-    (remained, _, (rt,(fr,fc))) <-
+      , fileLength = l},decoded) <- consumeCommonHeader raw -- takes 8 bytes
+    (remained, _, ((rt,rtSize),(fr,fc))) <-
         runGetOrFail' (ErrHeader PPHeader2) getHeader2 decoded
-    pure (Header cm v l rt fr fc, remained)
+    pure ((Header cm v l rt fr fc, 8 + rtSize + 4), remained)
   where
-    getHeader2 :: Get (Rect, (Double, Int))
+    getHeader2 :: Get ((Rect, Int), (Double, Int))
     getHeader2 = do
         rt <- getRect
         -- frame rate

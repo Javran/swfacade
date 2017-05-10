@@ -5,51 +5,18 @@ import System.Environment
 import qualified Data.ByteString.Lazy as LBS
 import Data.Binary.Get
 import Data.Word
-import Data.Bits
 import Control.Monad.Except
 
 import Data.Swfacade.Header
+import Data.Swfacade.RawTag
 
-data RawTag = RawTag
-  { code :: Word16
-  , contentLength :: Int
-  , rawData :: LBS.ByteString
-  }
-
-getRawTag :: Get RawTag
-getRawTag = do
-    (c,l) <- getCodeAndLength
-    raw <- getLazyByteString (fromIntegral l)
-    pure (RawTag c l raw)
+verifyLength :: Header -> Int -> [RawTag] -> Either (Int,Int) Int
+verifyLength header hdSize tags = if fullFileLength == hdSize + fullTagLength
+    then Right fullFileLength
+    else Left (fullFileLength, hdSize + fullTagLength)
   where
-    splitShort :: Word16 -> (Word16, Int)
-    splitShort w = (upper10, fromIntegral lower6)
-      where
-        upper10 = shiftR w 6 .&. 0x3FF
-        lower6 = w .&. 0x3F
-
-    getCodeAndLength :: Get (Word16, Int)
-    getCodeAndLength = do
-        w <- getWord16le
-        let (c,l) = splitShort w
-        if l == 0x3F
-          then do
-            realLen <- getWord32le
-            pure (c,fromIntegral realLen)
-          else pure (c,l)
-
-isEndTag :: RawTag -> Bool
-isEndTag = (== 0) . code
-
-getRawTags :: Get [RawTag]
-getRawTags = do
-    t <- getRawTag
-    if isEndTag t
-      then pure [t]
-      else do
-        ts <- getRawTags
-        pure (t:ts)
-
+    fullFileLength = fileLength header
+    fullTagLength = sum (map tagLength tags)
 
 explainCode :: Word16 -> String
 explainCode c = show c ++ "\t" ++ explain
@@ -74,12 +41,11 @@ main :: IO ()
 main = do
     [fp] <- getArgs
     raw <- LBS.readFile fp
-    let Right (hd,result) = runExcept (getHeader raw)
-    print hd
-    -- let (hd,result) = runGet getAll raw
-    -- TODO: bring back length verification
-    -- print (hd, LBS.length result+8)
-    let ts = runGet getRawTags result
+    let Right ((header,hdSize),result) = runExcept (getHeader raw)
+    let ts :: [RawTag]
+        ts = runGet getRawTags result
     print (length ts)
     mapM_ (putStrLn . explainCode . code) ts
-    pure ()
+    case verifyLength header hdSize ts of
+        Left p -> putStrLn $ "File size mismatch: " ++ show p
+        Right l -> putStrLn $ "Verified full file length: " ++ show l
