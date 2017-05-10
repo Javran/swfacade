@@ -60,6 +60,7 @@ explainCode c = show c ++ "\t" ++ explain
         2 -> "DefineShape"
         9 -> "SetBackgroundColor"
         22 -> "DefineShape2"
+        26 -> "PlaceObject2"
         35 -> "DefineBitsJPEG3"
         36 -> "DefineBitsLossless2"
         39 -> "DefineSprite"

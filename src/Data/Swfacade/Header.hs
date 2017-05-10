@@ -1,4 +1,9 @@
-{-# LANGUAGE DuplicateRecordFields, ScopedTypeVariables, PartialTypeSignatures, TypeFamilies #-}
+{-# LANGUAGE
+    DuplicateRecordFields
+  , ScopedTypeVariables
+  , PartialTypeSignatures
+  , TypeFamilies
+  #-}
 {-# OPTIONS_GHC -fno-warn-partial-type-signatures #-}
 module Data.Swfacade.Header
   ( Rect(..)
@@ -44,9 +49,15 @@ data CommonHeader = CommonHeader
   , contentLength :: Int
   } deriving Show
 
+type BinaryParseError = (LBS.ByteString, ByteOffset, String)
+
+data ParsePhase
+  = PPCommonHeader
+  | PPHeader2 -- second part of the header, which is part of the compressed data.
+    deriving Show
+
 data ParseError
-  = ErrCommonHeader (LBS.ByteString, ByteOffset, String)
-  | ErrHeader2 (LBS.ByteString, ByteOffset, String)
+  = ErrHeader ParsePhase BinaryParseError
   | ErrOther String
     deriving Show
 
@@ -59,7 +70,7 @@ getChar8 :: Get Char
 getChar8 = w2c <$> getWord8
 
 runGetOrFail' ::
-       ((LBS.ByteString, ByteOffset, String) -> ParseError)
+       (BinaryParseError -> ParseError)
     -> Get a -> LBS.ByteString
     -> SwfParse (LBS.ByteString, ByteOffset, a)
 runGetOrFail' wrapError get = coerce . left wrapError . runGetOrFail get
@@ -118,7 +129,8 @@ getCommonHeader = do
 -- consume common header part, get rest of the data (lazily) decompressed
 consumeCommonHeader :: LBS.ByteString -> SwfParse (CommonHeader, LBS.ByteString)
 consumeCommonHeader raw = do
-    (remained, _ :: ByteOffset, ch) <- runGetOrFail' ErrCommonHeader getCommonHeader raw
+    (remained, _ :: ByteOffset, ch) <-
+        runGetOrFail' (ErrHeader PPCommonHeader) getCommonHeader raw
     let cm = compressMethod (ch :: CommonHeader)
         decompress = case cm of
             Nothing -> id
@@ -128,13 +140,15 @@ consumeCommonHeader raw = do
                 Lzma.decompress
     pure (ch, decompress remained)
 
+-- fully parse header of a SWF file, return a lazy ByteString of unconsumed part
 getHeader :: LBS.ByteString -> SwfParse (Header, LBS.ByteString)
-getHeader raw = do --pure (Header cm v l rt fr fc, remained)
+getHeader raw = do
     (CommonHeader
       { compressMethod = cm
       , version = v
       , contentLength = l},decoded) <- consumeCommonHeader raw
-    (remained, _, (rt,(fr,fc))) <- runGetOrFail' ErrHeader2 getHeader2 decoded
+    (remained, _, (rt,(fr,fc))) <-
+        runGetOrFail' (ErrHeader PPHeader2) getHeader2 decoded
     pure (Header cm v l rt fr fc, remained)
   where
     getHeader2 :: Get (Rect, (Double, Int))
