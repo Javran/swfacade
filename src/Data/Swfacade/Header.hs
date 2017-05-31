@@ -136,7 +136,7 @@ consumeCommonHeader raw = do
             Nothing -> id
             Just Zlib -> Zlib.decompress
             Just Lzma ->
-                {- TODO: this is not working, need to adjust the data somehow -}
+                {- I feel this is not going to work, let's don't worry about it for now -}
                 Lzma.decompress
     pure (ch, decompress remained)
 

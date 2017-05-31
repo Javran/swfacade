@@ -6,7 +6,6 @@ import qualified Data.ByteString.Lazy as LBS
 import Data.Binary.Get
 import Data.Word
 import Control.Monad.Except
-
 import Data.Swfacade.Header
 import Data.Swfacade.RawTag
 

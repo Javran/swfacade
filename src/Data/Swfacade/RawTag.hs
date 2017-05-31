@@ -54,3 +54,12 @@ getRawTags = do
       else do
         ts <- getRawTags
         pure (t:ts)
+
+
+word8ToHex :: Word8 -> String
+word8ToHex w = [table !! u, table !! l]
+  where
+    u, l :: Int
+    (u,l) = fromIntegral w `quotRem` 16
+
+    table = ['0'..'9'] ++ ['A'..'F']
