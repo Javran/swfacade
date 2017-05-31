@@ -3,6 +3,8 @@ module Data.Swfacade.RawTag where
 import Data.Word
 import Data.Binary.Get
 import Data.Bits
+import Data.List
+import Data.List.Split
 import qualified Data.ByteString.Lazy as LBS
 
 data TagSize = TSShort | TSLong deriving (Show)
@@ -63,3 +65,11 @@ word8ToHex w = [table !! u, table !! l]
     (u,l) = fromIntegral w `quotRem` 16
 
     table = ['0'..'9'] ++ ['A'..'F']
+
+-- try to dump data in HEX
+pprRawData :: LBS.ByteString -> [String]
+pprRawData = fmap processLine . chunksOf 16 . LBS.unpack
+  where
+    processLine :: [Word8] -> String
+    processLine xs = unwords (processPair <$> chunksOf 2 xs)
+    processPair = concatMap word8ToHex
