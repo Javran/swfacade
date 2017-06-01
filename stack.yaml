@@ -2,6 +2,12 @@ flags: {}
 extra-package-dbs: []
 packages:
 - '.'
+- location:
+    git: https://github.com/RaphaelJ/friday-devil.git
+    commit: 73181586307a4db93302bfeb9af9ded615e60a07
+  extra-dep: true
 extra-deps:
+- friday-0.2.3.1
 - lzma-0.0.0.3
+- ratio-int-0.1.2
 resolver: lts-8.2
