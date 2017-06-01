@@ -7,6 +7,8 @@ import qualified Data.ByteString as BS
 import Data.Binary.Get
 import Control.Monad
 import qualified Codec.Compression.Zlib as Zlib
+import qualified Vision.Image.Storage.DevIL as DevIL
+import Vision.Image
 
 data DefineBitsJPEG3 = DefineBitsJPEG3
   { characterId :: Int
@@ -49,6 +51,8 @@ getData = do
         | match jpgSig -> do
             alphaContent <- getRemainingLazyByteString
             let decompressed = Zlib.decompress alphaContent
+                img :: Either DevIL.StorageError RGB
+                img = DevIL.loadBS DevIL.JPG (LBS.toStrict decompressed)
             pure (mkData (Just (LBS.toStrict decompressed)))
         | match pngSig ->
             pure (mkData Nothing)

@@ -28,6 +28,7 @@ executable swfacade
                      , binary
                      , split
                      , deepseq
+                     , friday
                      , friday-devil
   default-language:    Haskell2010
 
