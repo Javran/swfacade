@@ -12,7 +12,7 @@ import Vision.Image
 
 data DefineBitsJPEG3 = DefineBitsJPEG3
   { characterId :: Int
-  , imageData :: BS.ByteString
+  , imageData :: RGB
   , bitmapAlphaData :: Maybe BS.ByteString
   }
 
@@ -46,17 +46,28 @@ getData = do
     alphaOffset <- fromIntegral <$> getWord32le
     imgData <- getByteString alphaOffset
     let match = matchSig imgData
-        mkData = DefineBitsJPEG3 chId imgData
+        mkData = DefineBitsJPEG3 chId
     if
         | match jpgSig -> do
             alphaContent <- getRemainingLazyByteString
             let decompressed = Zlib.decompress alphaContent
-                img :: Either DevIL.StorageError RGB
-                img = DevIL.loadBS DevIL.JPG (LBS.toStrict decompressed)
-            pure (mkData (Just (LBS.toStrict decompressed)))
-        | match pngSig ->
-            pure (mkData Nothing)
-        | match gif89aSig ->
-            pure (mkData Nothing)
+                mImg :: Either DevIL.StorageError RGB
+                mImg = DevIL.loadBS DevIL.JPG imgData
+            case mImg of
+                Left err -> fail (show err)
+                Right img ->
+                    pure (mkData img (Just (LBS.toStrict decompressed)))
+        | match pngSig -> do
+            let mImg = DevIL.loadBS DevIL.PNG imgData
+            case mImg of
+                Left err -> fail (show err)
+                Right img ->
+                    pure (mkData img Nothing)
+        | match gif89aSig -> do
+            let mImg = DevIL.loadBS DevIL.GIF imgData
+            case mImg of
+                Left err -> fail (show err)
+                Right img ->
+                    pure (mkData img Nothing)
         | otherwise ->
             mzero
