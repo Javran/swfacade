@@ -9,6 +9,7 @@ import Control.Monad
 import qualified Codec.Compression.Zlib as Zlib
 import qualified Vision.Image.Storage.DevIL as DevIL
 import Vision.Image
+import Text.Printf
 
 data DefineBitsJPEG3 = DefineBitsJPEG3
   { characterId :: Int
@@ -24,8 +25,20 @@ process rt
   | not (isDefineBitsJPEG3 rt) = pure ()
 process rt = do
     let xs = pprRawData (rawData rt)
+        raw = rawData rt
+        getResult ::
+            Either
+              (LBS.ByteString, ByteOffset, String)
+              (LBS.ByteString, ByteOffset, DefineBitsJPEG3)
+        getResult = runGetOrFail getData raw
     putStrLn "++++"
-    mapM_ putStrLn xs
+    case getResult of
+        Left _ -> putStrLn "bad"
+        Right (_, _, d) -> do
+            let fp :: String
+                fp = printf "extract-test-%d.jpg" (characterId d)
+            DevIL.save DevIL.JPG fp (imageData d)
+            putStrLn "good"
     putStrLn "----"
 
 jpgSig :: BS.ByteString
