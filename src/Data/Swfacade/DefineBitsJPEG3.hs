@@ -9,8 +9,9 @@ import Control.Monad
 import qualified Codec.Compression.Zlib as Zlib
 import qualified Vision.Image.Storage.DevIL as DevIL
 import Vision.Image
-import Vision.Primitive.Shape
+import Vision.Primitive
 import Text.Printf
+import qualified Data.Ix as Ix
 
 data ImageData
   = JPGImg RGB
@@ -24,9 +25,16 @@ data DefineBitsJPEG3 = DefineBitsJPEG3
   }
 
 combineAlphaChannel :: RGB -> BS.ByteString -> RGBA
-combineAlphaChannel src alphas = fromFunction sp _
+combineAlphaChannel src alphas = fromFunction sp mapPixel
   where
-    sp = shape src
+    sp@(Z :. h :. w) = shape src
+    getInd = Ix.index ((0,0),(h-1,w-1))
+
+    mapPixel :: Point -> RGBAPixel
+    mapPixel pt@(Z :. y :. x) = RGBAPixel r g b a
+      where
+        RGBPixel r g b = index src pt
+        a = BS.index alphas (getInd (y,x))
 
 isDefineBitsJPEG3 :: RawTag -> Bool
 isDefineBitsJPEG3 = (== 35) . code
