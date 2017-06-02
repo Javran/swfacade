@@ -23,6 +23,11 @@ data DefineBitsJPEG3 = DefineBitsJPEG3
   , bitmapAlphaData :: Maybe BS.ByteString
   }
 
+combineAlphaChannel :: RGB -> BS.ByteString -> RGBA
+combineAlphaChannel src alphas = fromFunction sp _
+  where
+    sp = shape src
+
 isDefineBitsJPEG3 :: RawTag -> Bool
 isDefineBitsJPEG3 = (== 35) . code
 
@@ -30,8 +35,7 @@ process :: RawTag -> IO ()
 process rt
   | not (isDefineBitsJPEG3 rt) = pure ()
 process rt = do
-    let xs = pprRawData (rawData rt)
-        raw = rawData rt
+    let raw = rawData rt
         getResult ::
             Either
               (LBS.ByteString, ByteOffset, String)
@@ -39,7 +43,7 @@ process rt = do
         getResult = runGetOrFail getData raw
     putStrLn "++++"
     case getResult of
-        Left _ -> putStrLn "bad"
+        Left err -> putStrLn ("Error: " ++ show err)
         Right (_, _, d) -> do
             let fp :: String
                 fp = printf "extract-test-%d.jpg" (characterId d)
