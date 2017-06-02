@@ -9,6 +9,7 @@ import Control.Monad
 import qualified Codec.Compression.Zlib as Zlib
 import qualified Vision.Image.Storage.DevIL as DevIL
 import Vision.Image
+import Vision.Primitive.Shape
 import Text.Printf
 
 data DefineBitsJPEG3 = DefineBitsJPEG3
@@ -68,7 +69,13 @@ getData = do
                 mImg = DevIL.loadBS DevIL.JPG imgData
             case mImg of
                 Left err -> fail (show err)
-                Right img ->
+                Right img -> do
+                    let Z :. h :. w = shape img
+                        expectedLen, actualLen :: Int
+                        expectedLen = h * w
+                        actualLen = fromIntegral (LBS.length decompressed)
+                    when (expectedLen /= actualLen) $
+                        fail (printf "Alpha channel length mismatched. expected: %d, actual %d" expectedLen actualLen)
                     pure (mkData img (Just (LBS.toStrict decompressed)))
         | match pngSig -> do
             let mImg = DevIL.loadBS DevIL.PNG imgData
