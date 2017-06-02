@@ -12,9 +12,14 @@ import Vision.Image
 import Vision.Primitive.Shape
 import Text.Printf
 
+data ImageData
+  = JPGImg RGB
+  | PNGImg RGBA
+  | GIFImg RGBA
+
 data DefineBitsJPEG3 = DefineBitsJPEG3
   { characterId :: Int
-  , imageData :: RGB
+  , imageData :: ImageData
   , bitmapAlphaData :: Maybe BS.ByteString
   }
 
@@ -38,7 +43,8 @@ process rt = do
         Right (_, _, d) -> do
             let fp :: String
                 fp = printf "extract-test-%d.jpg" (characterId d)
-            DevIL.save DevIL.JPG fp (imageData d)
+                (JPGImg img) = imageData d
+            DevIL.save DevIL.JPG fp img
             putStrLn "good"
     putStrLn "----"
 
@@ -76,18 +82,18 @@ getData = do
                         actualLen = fromIntegral (LBS.length decompressed)
                     when (expectedLen /= actualLen) $
                         fail (printf "Alpha channel length mismatched. expected: %d, actual %d" expectedLen actualLen)
-                    pure (mkData img (Just (LBS.toStrict decompressed)))
+                    pure (mkData (JPGImg img) (Just (LBS.toStrict decompressed)))
         | match pngSig -> do
             let mImg = DevIL.loadBS DevIL.PNG imgData
             case mImg of
                 Left err -> fail (show err)
                 Right img ->
-                    pure (mkData img Nothing)
+                    pure (mkData (PNGImg img) Nothing)
         | match gif89aSig -> do
             let mImg = DevIL.loadBS DevIL.GIF imgData
             case mImg of
                 Left err -> fail (show err)
                 Right img ->
-                    pure (mkData img Nothing)
+                    pure (mkData (GIFImg img) Nothing)
         | otherwise ->
             mzero
