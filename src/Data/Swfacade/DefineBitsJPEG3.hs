@@ -13,15 +13,15 @@ import Vision.Primitive
 import Text.Printf
 import qualified Data.Ix as Ix
 
-data ImageData
-  = JPGImg RGB
-  | PNGImg RGBA
-  | GIFImg RGBA
+data ImageType
+  = JPGImg
+  | PNGImg
+  | GIFImg
 
 data DefineBitsJPEG3 = DefineBitsJPEG3
   { characterId :: Int
-  , imageData :: ImageData
-  , bitmapAlphaData :: Maybe BS.ByteString
+  , imageData :: RGBA
+  , imageType :: ImageType
   }
 
 combineAlphaChannel :: RGB -> BS.ByteString -> RGBA
@@ -55,7 +55,7 @@ process rt = do
         Right (_, _, d) -> do
             let fp :: String
                 fp = printf "extract-test-%d.jpg" (characterId d)
-                (JPGImg img) = imageData d
+                img = imageData d
             DevIL.save DevIL.JPG fp img
             putStrLn "good"
     putStrLn "----"
@@ -92,20 +92,22 @@ getData = do
                         expectedLen, actualLen :: Int
                         expectedLen = h * w
                         actualLen = fromIntegral (LBS.length decompressed)
+                        combinedImg = combineAlphaChannel img (LBS.toStrict decompressed)
                     when (expectedLen /= actualLen) $
-                        fail (printf "Alpha channel length mismatched. expected: %d, actual %d" expectedLen actualLen)
-                    pure (mkData (JPGImg img) (Just (LBS.toStrict decompressed)))
+                        fail (printf "Alpha channel length mismatched. \
+                             \expected: %d, actual %d" expectedLen actualLen)
+                    pure (mkData combinedImg JPGImg)
         | match pngSig -> do
             let mImg = DevIL.loadBS DevIL.PNG imgData
             case mImg of
                 Left err -> fail (show err)
                 Right img ->
-                    pure (mkData (PNGImg img) Nothing)
+                    pure (mkData img PNGImg)
         | match gif89aSig -> do
             let mImg = DevIL.loadBS DevIL.GIF imgData
             case mImg of
                 Left err -> fail (show err)
                 Right img ->
-                    pure (mkData (GIFImg img) Nothing)
+                    pure (mkData img GIFImg)
         | otherwise ->
             mzero
