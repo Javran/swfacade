@@ -27,6 +27,7 @@ explainCode c = show c ++ "\t" ++ explain
         1 -> "ShowFrame"
         2 -> "DefineShape"
         9 -> "SetBackgroundColor"
+        20 -> "DefineBitsLossless"
         22 -> "DefineShape2"
         26 -> "PlaceObject2"
         35 -> "DefineBitsJPEG3"
