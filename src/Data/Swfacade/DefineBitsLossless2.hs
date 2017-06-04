@@ -9,12 +9,39 @@ import qualified Codec.Compression.Zlib as Zlib
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Ix as Ix
 import qualified Data.Vector as V
+import qualified Vision.Image.Storage.DevIL as DevIL
 import Data.Word
+import Text.Printf
+import Data.Swfacade.RawTag
 
 data DefineBitsLossless2 = DefineBitsLossless2
   { characterId :: Int
   , imageData :: RGBA
   }
+
+isDefineBitsLossless2 :: RawTag -> Bool
+isDefineBitsLossless2 = (== 36) . code
+
+process :: RawTag -> IO ()
+process rt
+  | not (isDefineBitsLossless2 rt) = pure ()
+process rt = do
+    let raw = rawData rt
+        getResult ::
+            Either
+              (LBS.ByteString, ByteOffset, String)
+              (LBS.ByteString, ByteOffset, DefineBitsLossless2)
+        getResult = runGetOrFail getData raw
+    putStrLn "++++ PNG"
+    case getResult of
+        Left (_,offset,err) -> putStrLn ("Error: " ++ show err ++ " offset: " ++ show offset)
+        Right (_, _, d) -> do
+            let fp :: String
+                fp = printf "extract-test-%d.png" (characterId d)
+                img = imageData d
+            DevIL.save DevIL.PNG fp img
+            putStrLn "good"
+    putStrLn "---- PNG"
 
 getData :: Get DefineBitsLossless2
 getData = do
@@ -24,7 +51,6 @@ getData = do
       fail "Unexpected bitmap format"
     w <- fromIntegral <$> getWord16le
     h <- fromIntegral <$> getWord16le
-
     let sp = ix2 h w
         getAlphaColormapData :: Int -> Get RGBA
         getAlphaColormapData ctSize = do
@@ -60,7 +86,7 @@ getData = do
                     [a,r,g,b] =
                         (\colorInd ->
                          let ind = fromIntegral (colorInd + pInd*4)
-                         in LBS.index decompressed ind) <$> [0..]
+                         in LBS.index decompressed ind) <$> [0,1,2,3]
 
             when (expectedLen /= fromIntegral actualLen) $
                 fail "Unexpected alpha bitmap data len"

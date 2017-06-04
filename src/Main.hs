@@ -9,7 +9,7 @@ import Control.Monad.Except
 import Data.Swfacade.Header
 import Data.Swfacade.RawTag
 
-import qualified Data.Swfacade.DefineBitsJPEG3 as JPEG3
+import qualified Data.Swfacade.DefineBitsLossless2 as PNG
 
 verifyLength :: Header -> Int -> [RawTag] -> Either (Int,Int) Int
 verifyLength header hdSize tags = if fullFileLength == hdSize + fullTagLength
@@ -52,4 +52,4 @@ main = do
         Left p -> putStrLn $ "File size mismatch: " ++ show p
         Right l -> putStrLn $ "Verified full file length: " ++ show l
 
-    mapM_ JPEG3.process ts
+    mapM_ PNG.process ts
