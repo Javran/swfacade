@@ -39,6 +39,7 @@ process rt = do
             let fp :: String
                 fp = printf "extract-test-%d.png" (characterId d)
                 img = imageData d
+            putStr ("chId=" ++ show (characterId d) ++ " ")
             DevIL.save DevIL.PNG fp img
             putStrLn "good"
     putStrLn "---- PNG"
@@ -55,11 +56,14 @@ getData = do
         getAlphaColormapData :: Int -> Get RGBA
         getAlphaColormapData ctSize = do
             colorTable <- V.fromList <$> replicateM (ctSize+1) getRGBA
-            let extraW = if w `mod` 4 == 0 then 0 else 4 - w `mod` 4
+            let extraW =
+                    let (_,r) = w `quotRem` 4
+                    in if r == 0 then 0 else 4 - r
                 paddedW = w + extraW
                 getImgLine = do
                     (xs,zeros) <- splitAt w <$> replicateM paddedW getWord8
-                    when (any (/= 0) zeros) $ fail "expecting paddings to be zeros"
+                    -- might generate a warning?
+                    --- when (any (/= 0) zeros) $ fail "expecting paddings to be zeros"
                     pure (V.fromList xs)
             (imgLines :: V.Vector (V.Vector Word8)) <- V.fromList <$> replicateM h getImgLine
             let getColor :: Point -> RGBAPixel
@@ -94,7 +98,15 @@ getData = do
     img <- case bmpFmt of
         3 -> do
             ctSize <- fromIntegral <$> getWord8
-            getAlphaColormapData ctSize
+            compressed <- getRemainingLazyByteString
+            let decompressed = Zlib.decompress compressed
+                getResult :: Either
+                  (LBS.ByteString, ByteOffset, String)
+                  (LBS.ByteString, ByteOffset, RGBA)
+                getResult = runGetOrFail (getAlphaColormapData ctSize) decompressed
+            case getResult of
+                Left (_,_,err) -> fail ("Error while getting colormap data: " ++ show err)
+                Right (_,_,img) -> pure img
         5 -> getAlphaBitmapData
         _ -> error "unreachable"
 
