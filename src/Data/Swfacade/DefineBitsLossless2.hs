@@ -107,15 +107,7 @@ getData = do
     img <- case bmpFmt of
         3 -> do
             ctSize <- fromIntegral <$> getWord8
-            compressed <- getRemainingLazyByteString
-            let decompressed = Zlib.decompress compressed
-                getResult :: Either
-                  (LBS.ByteString, ByteOffset, String)
-                  (LBS.ByteString, ByteOffset, RGBA)
-                getResult = runGetOrFail (getAlphaColormapData ctSize) decompressed
-            case getResult of
-                Left (_,_,err) -> fail ("Error while getting colormap data: " ++ show err)
-                Right (_,_,img) -> pure img
+            withDecompressedData (getAlphaColormapData ctSize)
         5 -> getAlphaBitmapData
         _ -> error "unreachable"
 

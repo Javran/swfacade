@@ -54,9 +54,9 @@ process rt = do
         Left err -> putStrLn ("Error: " ++ show err)
         Right (_, _, d) -> do
             let fp :: String
-                fp = printf "extract-test-%d.jpg" (characterId d)
+                fp = printf "extract-test-%d.png" (characterId d)
                 img = imageData d
-            DevIL.save DevIL.JPG fp img
+            DevIL.save DevIL.PNG fp img
             putStrLn "good"
     putStrLn "----"
 
