@@ -44,11 +44,13 @@ process rt = do
             putStrLn "good"
     putStrLn "---- PNG"
 
-withDecompressedData :: forall a. Get a -> Get a
+withDecompressedData :: forall a. (LBS.ByteString -> Get a) -> Get a
 withDecompressedData getter = do
     compressed <- getRemainingLazyByteString
     let decompressed = Zlib.decompress compressed
-        getResult = runGetOrFail getter decompressed
+        -- provide the decompressed copy in case getter wants to get full access of it
+        -- for perhaps length checking
+        getResult = runGetOrFail (getter decompressed) decompressed
     case getResult of
       Left (_,_,err) -> fail ("Error while acting on decompressed data: " ++ show err)
       Right (_,_,result) -> pure result
@@ -87,27 +89,25 @@ getData = do
 
         getAlphaBitmapData :: Get RGBA
         getAlphaBitmapData = do
-            compressed <- getRemainingLazyByteString
-            let decompressed = Zlib.decompress compressed
-                expectedLen = h * w * 4
-                actualLen = LBS.length decompressed
-                getPixelInd = Ix.index ((0,0),(h-1,w-1))
-                getColor :: Point -> RGBAPixel
-                getColor (Z :. y :. x) = RGBAPixel r g b a
-                  where
-                    pInd = getPixelInd (y,x)
-                    [a,r,g,b] =
-                        (\colorInd ->
-                         let ind = fromIntegral (colorInd + pInd*4)
-                         in LBS.index decompressed ind) <$> [0,1,2,3]
-
-            when (expectedLen /= fromIntegral actualLen) $
-                fail "Unexpected alpha bitmap data len"
-            pure (fromFunction sp getColor)
+            withDecompressedData $ \decompressed -> do
+                let expectedLen = h * w * 4
+                    actualLen = LBS.length decompressed
+                    getPixelInd = Ix.index ((0,0),(h-1,w-1))
+                    getColor :: Point -> RGBAPixel
+                    getColor (Z :. y :. x) = RGBAPixel r g b a
+                      where
+                        pInd = getPixelInd (y,x)
+                        [a,r,g,b] =
+                            (\colorInd ->
+                             let ind = fromIntegral (colorInd + pInd*4)
+                             in LBS.index decompressed ind) <$> [0,1,2,3]
+                when (expectedLen /= fromIntegral actualLen) $
+                    fail "Unexpected alpha bitmap data len"
+                pure (fromFunction sp getColor)
     img <- case bmpFmt of
         3 -> do
             ctSize <- fromIntegral <$> getWord8
-            withDecompressedData (getAlphaColormapData ctSize)
+            withDecompressedData (const $ getAlphaColormapData ctSize)
         5 -> getAlphaBitmapData
         _ -> error "unreachable"
 
