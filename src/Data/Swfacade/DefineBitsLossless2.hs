@@ -44,6 +44,15 @@ process rt = do
             putStrLn "good"
     putStrLn "---- PNG"
 
+withDecompressedData :: forall a. Get a -> Get a
+withDecompressedData getter = do
+    compressed <- getRemainingLazyByteString
+    let decompressed = Zlib.decompress compressed
+        getResult = runGetOrFail getter decompressed
+    case getResult of
+      Left (_,_,err) -> fail ("Error while acting on decompressed data: " ++ show err)
+      Right (_,_,result) -> pure result
+
 getData :: Get DefineBitsLossless2
 getData = do
     chId <- fromIntegral <$> getWord16le
