@@ -10,4 +10,4 @@ extra-deps:
 - friday-0.2.3.1
 - lzma-0.0.0.3
 - ratio-int-0.1.2
-resolver: lts-8.2
+resolver: lts-10.0

@@ -20,6 +20,8 @@ executable swfacade
   other-modules:       Data.Swfacade.Header
                      , Data.Swfacade.RawTag
                      , Data.Swfacade.DefineBitsJPEG3
+                     , Data.Swfacade.DefineBitsLossless2
+                     , Data.Swfacade.DefineSound
   build-depends:       base
                      , bytestring
                      , mtl

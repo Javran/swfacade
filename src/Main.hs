@@ -1,4 +1,4 @@
-{-# LANGUAGE DuplicateRecordFields, PartialTypeSignatures #-}
+{-# LANGUAGE DuplicateRecordFields, PartialTypeSignatures, NamedFieldPuns #-}
 module Main where
 
 import System.Environment
@@ -9,7 +9,8 @@ import Control.Monad.Except
 import Data.Swfacade.Header
 import Data.Swfacade.RawTag
 
-import qualified Data.Swfacade.DefineBitsLossless2 as PNG
+-- import qualified Data.Swfacade.DefineBitsLossless2 as PNG
+import qualified Data.Swfacade.DefineSound as Sound
 
 verifyLength :: Header -> Int -> [RawTag] -> Either (Int,Int) Int
 verifyLength header hdSize tags = if fullFileLength == hdSize + fullTagLength
@@ -27,6 +28,7 @@ explainCode c = show c ++ "\t" ++ explain
         1 -> "ShowFrame"
         2 -> "DefineShape"
         9 -> "SetBackgroundColor"
+        14 -> "DefineSound"
         20 -> "DefineBitsLossless"
         22 -> "DefineShape2"
         26 -> "PlaceObject2"
@@ -46,10 +48,13 @@ main = do
     let Right ((header,hdSize),result) = runExcept (getHeader raw)
     let ts :: [RawTag]
         ts = runGet getRawTags result
+    forM_ ts $ \ RawTag {code, contentLength} ->
+        putStrLn $ "code: " ++ show code ++ ", len: " ++ show contentLength
     print (length ts)
+    print header
     mapM_ (putStrLn . explainCode . code) ts
     case verifyLength header hdSize ts of
         Left p -> putStrLn $ "File size mismatch: " ++ show p
         Right l -> putStrLn $ "Verified full file length: " ++ show l
 
-    mapM_ PNG.process ts
+    mapM_ Sound.process ts
